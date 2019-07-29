@@ -95,7 +95,7 @@ static int extract_raw_crash_report(const char* filename)
 	return res;
 }
 
-static int afc_client_copy_and_remove_crash_reports(afc_client_t afc, const char* device_directory, const char* host_directory)
+static int afc_client_copy_and_remove_crash_reports(afc_client_t afc, const char* device_directory, const char* host_directory, const char* filename_filter)
 {
 	afc_error_t afc_error;
 	int k;
@@ -226,12 +226,17 @@ static int afc_client_copy_and_remove_crash_reports(afc_client_t afc, const char
 #else
 			mkdir(target_filename, 0755);
 #endif
-			res = afc_client_copy_and_remove_crash_reports(afc, source_filename, target_filename);
+			res = afc_client_copy_and_remove_crash_reports(afc, source_filename, target_filename, filename_filter);
 
 			/* remove directory from device */
 			if (!keep_crash_reports)
 				afc_remove_path(afc, source_filename);
 		} else if (S_ISREG(stbuf.st_mode)) {
+
+			if (filename_filter != NULL && strstr(source_filename, filename_filter) == NULL) {
+				continue;
+			}
+
 			/* copy file to host */
 			afc_error = afc_file_open(afc, source_filename, AFC_FOPEN_RDONLY, &handle);
 			if(afc_error != AFC_E_SUCCESS) {
@@ -304,6 +309,7 @@ static void print_usage(int argc, char **argv)
 	printf("  -k, --keep\t\tcopy but do not remove crash reports from device\n");
 	printf("  -d, --debug\t\tenable communication debugging\n");
 	printf("  -u, --udid UDID\ttarget specific device by UDID\n");
+	printf("  -f, --filter NAME\tfilter crash reports by filename NAME (case sensitive)\n");
 	printf("  -h, --help\t\tprints usage information\n");
 	printf("\n");
 	printf("Homepage: <" PACKAGE_URL ">\n");
@@ -321,6 +327,7 @@ int main(int argc, char* argv[])
 
 	int i;
 	const char* udid = NULL;
+	const char* filename_filter = NULL;
 
 	/* parse cmdline args */
 	for (i = 1; i < argc; i++) {
@@ -335,6 +342,15 @@ int main(int argc, char* argv[])
 				return 0;
 			}
 			udid = argv[i];
+			continue;
+		}
+		else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--filter")) {
+			i++;
+			if (!argv[i] || !*argv[i]) {
+				print_usage(argc, argv);
+				return 0;
+			}
+			filename_filter = argv[i];
 			continue;
 		}
 		else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
@@ -456,7 +472,7 @@ int main(int argc, char* argv[])
 	}
 
 	/* recursively copy crash reports from the device to a local directory */
-	if (afc_client_copy_and_remove_crash_reports(afc, ".", target_directory) < 0) {
+	if (afc_client_copy_and_remove_crash_reports(afc, ".", target_directory, filename_filter) < 0) {
 		fprintf(stderr, "ERROR: Failed to get crash reports from device.\n");
 		afc_client_free(afc);
 		idevice_free(device);
